@@ -1,4 +1,4 @@
-// The ptrace package provides an interface to the Linux ptrace system call.
+// Package ptrace provides an interface to the Linux ptrace system call.
 package ptrace
 
 import (
