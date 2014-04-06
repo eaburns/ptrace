@@ -2,9 +2,17 @@
 package ptrace
 
 import (
+	"errors"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
+)
+
+var (
+	// TraceeExited is returned when a command is executed on a tracee
+	// that has already exited.
+	TraceeExited = errors.New("tracee exited")
 )
 
 // BUG(eaburns): Add different events.
@@ -16,7 +24,11 @@ type Tracee struct {
 	proc   *os.Process
 	events chan Event
 	err    chan error
-	cmds   chan func()
+
+	cmds chan func()
+	// CmdsLock synchronizes sends to the commands channel with the
+	// closing of the channel.
+	cmdsLock sync.RWMutex
 }
 
 // Events returns the events channel for the tracee.
@@ -62,27 +74,46 @@ func Exec(name string, argv []string) (*Tracee, error) {
 	return t, <-err
 }
 
-// Detach detaches the tracee, allowing the traced process to continue
-// normally.  No more tracing is performed, and the events channel is
-// closed.
+// Detach detaches the tracee, allowing it to continue its execution normally.
+// No more tracing is performed, and no events are sent on the event channel
+// until the tracee exits.
 func (t *Tracee) Detach() error {
 	err := make(chan error, 1)
-	t.cmds <- func() { err <- syscall.PtraceDetach(t.proc.Pid) }
-	return <-err
+	if t.do(func() { err <- syscall.PtraceDetach(t.proc.Pid) }) {
+		return <-err
+	}
+	return TraceeExited
 }
 
 // SingleStep continues the tracee for one instruction.
 func (t *Tracee) SingleStep() error {
 	err := make(chan error, 1)
-	t.cmds <- func() { err <- syscall.PtraceSingleStep(t.proc.Pid) }
-	return <-err
+	if t.do(func() { err <- syscall.PtraceSingleStep(t.proc.Pid) }) {
+		return <-err
+	}
+	return TraceeExited
+}
+
+// Sends the command to the tracer go routine.  Returns whether the command
+// was sent or not.  The command may not have been sent if the tracee exited.
+func (t *Tracee) do(f func()) bool {
+	t.cmdsLock.RLock()
+	defer t.cmdsLock.RUnlock()
+	if t.cmds != nil {
+		t.cmds <- f
+		return true
+	}
+	return false
 }
 
 func (t *Tracee) wait() {
 	defer func() {
 		close(t.events)
 		close(t.err)
+		t.cmdsLock.Lock()
 		close(t.cmds)
+		t.cmds = nil
+		t.cmdsLock.Unlock()
 	}()
 	for {
 		state, err := t.proc.Wait()
