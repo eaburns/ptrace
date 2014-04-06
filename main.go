@@ -19,22 +19,20 @@ func main() {
 		log.Fatal(err)
 	}
 	var n uint64
-loop:
-	for {
-		select {
-		case err, ok := <-tracee.Error:
-			if ok {
-				log.Fatalf("error: %s", err)
+	for _ = range tracee.Events() {
+		n++
+		if n == 1000 {
+			if err := tracee.Detach(); err != nil {
+				log.Fatal("detach error: %s\n", err)
 			}
-		case _, ok := <-tracee.Events:
-			if !ok {
-				break loop
-			}
-			n++
-			if err := tracee.SingleStep(); err != nil {
-				log.Fatalf("step error: %s\n", err)
-			}
+			continue
 		}
+		if err := tracee.SingleStep(); err != nil {
+			log.Fatalf("step error: %s\n", err)
+		}
+	}
+	if err := tracee.Error(); err != nil {
+		log.Fatal("error: %s\n", err.Error())
 	}
 	log.Printf("%d instructions\n", n)
 }
