@@ -15,9 +15,12 @@ var (
 	TraceeExited = errors.New("tracee exited")
 )
 
-// BUG(eaburns): Add different events.
-type Event struct {
-}
+// An Event is sent on a Tracee's event channel whenever it is stopped.
+//
+// BUG(eaburns): For now, an event is the wait status, but that's Unix
+// specific.  We should find something better and more general.  This
+// should be an interface.
+type Event syscall.WaitStatus
 
 // A Tracee is a process that is being traced.
 type Tracee struct {
@@ -124,7 +127,7 @@ func (t *Tracee) wait() {
 		if state.Exited() {
 			return
 		}
-		t.events <- struct{}{}
+		t.events <- Event(state.Sys().(syscall.WaitStatus))
 	}
 }
 
