@@ -6,8 +6,8 @@ import (
 	"log"
 	"runtime"
 
-	"github.com/eaburns/ptrace"
 	"github.com/davecheney/profile"
+	"github.com/eaburns/ptrace"
 )
 
 func main() {
@@ -19,13 +19,14 @@ func main() {
 		log.Fatal(err)
 	}
 	var n uint64
-	loop: for {
+loop:
+	for {
 		select {
 		case err, ok := <-tracee.Error:
 			if ok {
 				log.Fatalf("error: %s", err)
 			}
-		case _, ok := <- tracee.Events:
+		case _, ok := <-tracee.Events:
 			if !ok {
 				break loop
 			}

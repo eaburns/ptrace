@@ -8,7 +8,8 @@ import (
 )
 
 // BUG(eaburns): Add different events.
-type Event struct{}
+type Event struct {
+}
 
 // A Tracee is a process that is being traced.
 type Tracee struct {
@@ -18,41 +19,36 @@ type Tracee struct {
 	// Error is a channel of any out-of-band errors by the tracee.  If an error is sent on Errors, the trace terminates and the tracee should no longer be used.
 	Error <-chan error
 
-	pid int
+	// Proc is the process being traced.
+	proc *os.Process
+
 	// Cmds is used to send ptrace commands to the Go routine residing on the thread that is tracing the tracee.
 	cmds chan<- func()
 }
 
-// Pid returns the pid of the tracee.
-func (t *Tracee) Pid() int {
-	return t.pid
-}
-
 // Exec executes a process with tracing enabled, returning the Tracee or an error if an error occurs while executing the process.
 func Exec(name string, argv []string) (*Tracee, error) {
-	sys := &syscall.SysProcAttr{
-		Ptrace: true,
-		Pdeathsig:  syscall.SIGCHLD,
-	}
-	files := []*os.File{os.Stdin, os.Stdout, os.Stderr}
-	attrs := &os.ProcAttr{ Files: files, Sys: sys }
-
-	pid := make(chan int)
+	proc := make(chan *os.Process)
 	err := make(chan error)
 	events := make(chan Event, 1)
 	errs := make(chan error)
 	cmds := make(chan func())
 	t := &Tracee{
 		Events: events,
-		Error: errs,
-		cmds: cmds,
+		Error:  errs,
+		cmds:   cmds,
 	}
 
 	go func() {
 		runtime.LockOSThread()
-
-		proc, e := os.StartProcess(name, argv, attrs)
-		pid <- proc.Pid
+		p, e := os.StartProcess(name, argv, &os.ProcAttr{
+			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+			Sys: &syscall.SysProcAttr{
+				Ptrace:    true,
+				Pdeathsig: syscall.SIGCHLD,
+			},
+		})
+		proc <- p
 		err <- e
 		if e != nil {
 			return
@@ -63,14 +59,13 @@ func Exec(name string, argv []string) (*Tracee, error) {
 				close(errs)
 			}()
 			for {
-				var status syscall.WaitStatus
-				_, err := syscall.Wait4(proc.Pid, &status, 0, nil)
+				state, err := p.Wait()
 				if err != nil {
 					errs <- err
 					t.stop()
 					return
 				}
-				if !status.Stopped() {
+				if state.Exited() {
 					t.stop()
 					return
 				}
@@ -81,7 +76,7 @@ func Exec(name string, argv []string) (*Tracee, error) {
 			cmd()
 		}
 	}()
-	t.pid = <-pid
+	t.proc = <-proc
 	return t, <-err
 }
 
@@ -89,7 +84,7 @@ func Exec(name string, argv []string) (*Tracee, error) {
 func (t *Tracee) Detach() error {
 	err := make(chan error)
 	t.cmds <- func() {
-		err <- syscall.PtraceDetach(t.pid)
+		err <- syscall.PtraceDetach(t.proc.Pid)
 	}
 	return <-err
 }
@@ -98,13 +93,13 @@ func (t *Tracee) Detach() error {
 func (t *Tracee) SingleStep() error {
 	err := make(chan error)
 	t.cmds <- func() {
-		e := syscall.PtraceSingleStep(t.pid)
+		e := syscall.PtraceSingleStep(t.proc.Pid)
 		if e != nil {
 			t.stop()
 		}
 		err <- e
 	}
-	return <- err
+	return <-err
 }
 
 func (t *Tracee) stop() {
