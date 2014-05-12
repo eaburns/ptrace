@@ -109,6 +109,15 @@ func (t *Tracee) Continue() error {
 	return TraceeExited
 }
 
+// SendSignal sends the given signal to the tracee.
+func (t *Tracee) SendSignal(sig syscall.Signal) error {
+	err := make(chan error, 1)
+	if t.do(func() { err <- syscall.Kill(t.proc.Pid, sig) }) {
+		return <-err
+	}
+	return TraceeExited
+}
+
 // Sends the command to the tracer go routine.  Returns whether the command
 // was sent or not.  The command may not have been sent if the tracee exited.
 func (t *Tracee) do(f func()) bool {
