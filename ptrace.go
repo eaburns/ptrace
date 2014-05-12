@@ -1,11 +1,10 @@
-// Package ptrace provides an interface to the Linux ptrace system call.
+// Package ptrace provides an interface to the ptrace system call.
 package ptrace
 
 import (
 	"errors"
 	"os"
 	"runtime"
-	"sync"
 	"syscall"
 )
 
@@ -15,12 +14,8 @@ var (
 	TraceeExited = errors.New("tracee exited")
 )
 
-// An Event is sent on a Tracee's event channel whenever it is stopped.
-//
-// BUG(eaburns): For now, an event is the wait status, but that's Unix
-// specific.  We should find something better and more general.  This
-// should be an interface.
-type Event syscall.WaitStatus
+// An Event is sent on a Tracee's event channel whenever it changes state.
+type Event interface{}
 
 // A Tracee is a process that is being traced.
 type Tracee struct {
@@ -29,20 +24,11 @@ type Tracee struct {
 	err    chan error
 
 	cmds chan func()
-	// CmdsLock synchronizes sends to the commands channel with the
-	// closing of the channel.
-	cmdsLock sync.RWMutex
 }
 
 // Events returns the events channel for the tracee.
 func (t *Tracee) Events() <-chan Event {
 	return t.events
-}
-
-// Error returns an error if one occurred, or nil.  It is to be called once
-// after all events have been received from the Tracee.
-func (t *Tracee) Error() error {
-	return <-t.err
 }
 
 // Exec executes a process with tracing enabled, returning the Tracee
@@ -121,8 +107,6 @@ func (t *Tracee) SendSignal(sig syscall.Signal) error {
 // Sends the command to the tracer go routine.  Returns whether the command
 // was sent or not.  The command may not have been sent if the tracee exited.
 func (t *Tracee) do(f func()) bool {
-	t.cmdsLock.RLock()
-	defer t.cmdsLock.RUnlock()
 	if t.cmds != nil {
 		t.cmds <- f
 		return true
@@ -130,15 +114,23 @@ func (t *Tracee) do(f func()) bool {
 	return false
 }
 
+// Close cleans up internal memory for managing the tracee.  If an error is
+// pending, it is returned.
+func (t *Tracee) Close() error {
+	var err error
+	select {
+	case err = <-t.err:
+	default:
+		err = nil
+	}
+	close(t.err)
+	close(t.cmds)
+	t.cmds = nil
+	return err
+}
+
 func (t *Tracee) wait() {
-	defer func() {
-		close(t.events)
-		close(t.err)
-		t.cmdsLock.Lock()
-		close(t.cmds)
-		t.cmds = nil
-		t.cmdsLock.Unlock()
-	}()
+	defer close(t.events)
 	for {
 		state, err := t.proc.Wait()
 		if err != nil {
@@ -146,6 +138,7 @@ func (t *Tracee) wait() {
 			return
 		}
 		if state.Exited() {
+			t.events <- Event(state.Sys().(syscall.WaitStatus))
 			return
 		}
 		t.events <- Event(state.Sys().(syscall.WaitStatus))
