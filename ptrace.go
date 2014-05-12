@@ -97,6 +97,18 @@ func (t *Tracee) SingleStep() error {
 	return TraceeExited
 }
 
+// Continue makes the tracee execute unmanaged by the tracer.  Most
+// commands are not possible in this state, with the notable exception
+// of sending a syscall.SIGSTOP signal.
+func (t *Tracee) Continue() error {
+	err := make(chan error, 1)
+	const signum = 0
+	if t.do(func() { err <- syscall.PtraceCont(t.proc.Pid, signum) }) {
+		return <-err
+	}
+	return TraceeExited
+}
+
 // Sends the command to the tracer go routine.  Returns whether the command
 // was sent or not.  The command may not have been sent if the tracee exited.
 func (t *Tracee) do(f func()) bool {
