@@ -26,6 +26,8 @@ type Tracee struct {
 	cmds chan func()
 }
 
+func (t *Tracee) PID() int { return t.proc.Pid }
+
 // Events returns the events channel for the tracee.
 func (t *Tracee) Events() <-chan Event {
 	return t.events
