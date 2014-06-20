@@ -2,6 +2,8 @@
 package ptrace
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"os"
 	"runtime"
@@ -22,8 +24,7 @@ type Tracee struct {
 	proc   *os.Process
 	events chan Event
 	err    chan error
-
-	cmds chan func()
+	cmds   chan func()
 }
 
 func (t *Tracee) PID() int { return t.proc.Pid }
@@ -112,8 +113,34 @@ func (t *Tracee) SendSignal(sig syscall.Signal) error {
 	return nil
 }
 
-// Sends the command to the tracer go routine.  Returns whether the command
-// was sent or not.  The command may not have been sent if the tracee exited.
+// grabs a word at the given address.
+func peek(pid int, address uintptr) (uint64, error) {
+	word := make([]byte, 8 /* 8 should really be sizeof(uintptr)... */)
+	nbytes, err := syscall.PtracePeekData(pid, address, word)
+	if err != nil || nbytes != 8/*sizeof(uintptr)*/ {
+		return 0, err
+	}
+	v := uint64(0x2Bc0ffee)
+	err = binary.Read(bytes.NewReader(word), binary.LittleEndian, &v)
+	return v, err
+}
+
+// Reads the given word from the inferior's address space.
+func (t *Tracee) ReadWord(address uintptr) (uint64, error) {
+	err := make(chan error, 1)
+	value := make(chan uint64, 1)
+	if t.do(func() {
+		v, e := peek(t.proc.Pid, address);
+		value <- v
+		err <- e
+	}) {
+		return <-value, <-err
+	}
+	return 0, errors.New("unreachable.")
+}
+
+// Sends the command to the tracer go routine.	Returns whether the command
+// was sent or not. The command may not have been sent if the tracee exited.
 func (t *Tracee) do(f func()) bool {
 	if t.cmds != nil {
 		t.cmds <- f
