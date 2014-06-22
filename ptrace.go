@@ -139,6 +139,29 @@ func (t *Tracee) ReadWord(address uintptr) (uint64, error) {
 	return 0, errors.New("unreachable.")
 }
 
+// grabs a word at the given address.
+func poke(pid int, address uintptr, word uint64) (error) {
+	/* convert the word into the byte array that PtracePokeData needs. */
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, word)
+	if err != nil { return err }
+
+	nbytes, err := syscall.PtracePokeData(pid, address, buf.Bytes())
+	if err != nil || nbytes != 8/*sizeof(uint64)*/ {
+		return err
+	}
+	return nil
+}
+
+// Writes the given word into the inferior's address space.
+func (t *Tracee) WriteWord(address uintptr, word uint64) (error) {
+	err := make(chan error, 1)
+	if t.do(func() {	err <- poke(t.proc.Pid, address, word) }) {
+		return <-err
+	}
+	return errors.New("unreachable.")
+}
+
 // Sends the command to the tracer go routine.	Returns whether the command
 // was sent or not. The command may not have been sent if the tracee exited.
 func (t *Tracee) do(f func()) bool {
