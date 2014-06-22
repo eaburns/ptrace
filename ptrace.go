@@ -72,6 +72,32 @@ func Exec(name string, argv []string) (*Tracee, error) {
 	return t, <-err
 }
 
+// Attaches to the given process.
+func Attach(pid int) (*Tracee, error) {
+	t := &Tracee{
+		events: make(chan Event, 1),
+		err:    make(chan error, 1),
+		cmds:   make(chan func()),
+	}
+
+	err := make(chan error, 1)
+	proc := make(chan *os.Process)
+	go func() {
+		runtime.LockOSThread()
+		err <- syscall.PtraceAttach(pid)
+		p, e := os.FindProcess(pid)
+		proc <- p
+		err <- e
+		if e != nil {
+			return
+		}
+		go t.wait()
+		t.trace()
+	}()
+	t.proc = <-proc
+	return t, <-err
+}
+
 // Detach detaches the tracee, allowing it to continue its execution normally.
 // No more tracing is performed, and no events are sent on the event channel
 // until the tracee exits.
