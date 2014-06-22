@@ -188,6 +188,21 @@ func (t *Tracee) WriteWord(address uintptr, word uint64) (error) {
 	return errors.New("unreachable.")
 }
 
+// reads the instruction pointer from the inferior and returns it.
+func (t* Tracee) GetIPtr() (uintptr, error) {
+	errchan := make(chan error, 1)
+	value := make(chan uintptr, 1)
+	if t.do(func() {
+		var regs syscall.PtraceRegs
+		err := syscall.PtraceGetRegs(t.proc.Pid, &regs)
+		value <- uintptr(regs.Rip)
+		errchan <- err
+	}) {
+		return <-value, <-errchan
+	}
+	return 0, errors.New("unreachable.")
+}
+
 // Sends the command to the tracer go routine.	Returns whether the command
 // was sent or not. The command may not have been sent if the tracee exited.
 func (t *Tracee) do(f func()) bool {
