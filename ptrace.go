@@ -209,6 +209,7 @@ func (t* Tracee) SetIPtr(addr uintptr) error {
 		var regs syscall.PtraceRegs
 		err := syscall.PtraceGetRegs(t.proc.Pid, &regs)
 		if err != nil { errchan <- err; return }
+		regs.Rip = uint64(addr)
 		err = syscall.PtraceSetRegs(t.proc.Pid, &regs)
 		errchan <- err
 	}) {

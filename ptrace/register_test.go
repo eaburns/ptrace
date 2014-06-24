@@ -28,5 +28,12 @@ func TestSetInstructionPointer(t *testing.T) {
 	<- tracee.Events() // wait for tracee to start.
 	err = tracee.SetIPtr(0x00400000)
   if err != nil { t.Fatalf("set iptr error: %v\n", err) }
+
+	iptr, err := tracee.GetIPtr()
+  if err != nil { t.Fatalf("get iptr error: %v\n", err) }
+
+	if iptr != 0x00400000 {
+		t.Fatalf("iptr set 0x%x instead of 0x00400000\n", iptr)
+	}
   tracee.SendSignal(syscall.SIGKILL)
 }
