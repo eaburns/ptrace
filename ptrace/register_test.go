@@ -18,3 +18,15 @@ func TestReadingInstructionPointer(t *testing.T) {
   }
   tracee.SendSignal(syscall.SIGKILL)
 }
+
+func TestSetInstructionPointer(t *testing.T) {
+	tracee, err := Exec("/bin/true", []string{"/bin/true"})
+	if err != nil {
+		t.Fatalf("could not start process: %v\n", err)
+		t.FailNow()
+	}
+	<- tracee.Events() // wait for tracee to start.
+	err = tracee.SetIPtr(0x00400000)
+  if err != nil { t.Fatalf("set iptr error: %v\n", err) }
+  tracee.SendSignal(syscall.SIGKILL)
+}

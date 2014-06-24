@@ -203,6 +203,20 @@ func (t* Tracee) GetIPtr() (uintptr, error) {
 	return 0, errors.New("unreachable.")
 }
 
+func (t* Tracee) SetIPtr(addr uintptr) error {
+	errchan := make(chan error, 1)
+	if t.do(func() {
+		var regs syscall.PtraceRegs
+		err := syscall.PtraceGetRegs(t.proc.Pid, &regs)
+		if err != nil { errchan <- err; return }
+		err = syscall.PtraceSetRegs(t.proc.Pid, &regs)
+		errchan <- err
+	}) {
+		return <-errchan
+	}
+	return errors.New("unreachable")
+}
+
 // Sends the command to the tracer go routine.	Returns whether the command
 // was sent or not. The command may not have been sent if the tracee exited.
 func (t *Tracee) do(f func()) bool {
