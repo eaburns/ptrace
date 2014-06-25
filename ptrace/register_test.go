@@ -35,5 +35,27 @@ func TestSetInstructionPointer(t *testing.T) {
 	if iptr != 0x00400000 {
 		t.Fatalf("iptr set 0x%x instead of 0x00400000\n", iptr)
 	}
-  tracee.SendSignal(syscall.SIGKILL)
+	tracee.SendSignal(syscall.SIGKILL)
+}
+
+func TestGrabRegs(t *testing.T) {
+	tracee, err := Exec("/bin/true", []string{"/bin/true"})
+	if err != nil {
+		t.Fatalf("could not start process: %v\n", err)
+		t.FailNow()
+	}
+	<- tracee.Events() // wait for tracee to start.
+	// run a few instructions, just so we get something of interest in the
+	// registers.
+	for i:=0; i < 1000; i++ {
+		if err = tracee.SingleStep() ; err != nil {
+			t.Fatalf("error stepping! %v\n", err)
+		}
+		<- tracee.Events() // eat the 'tracee stopped!' event we get.
+	}
+
+	registers, err := tracee.GetRegs()
+	if err != nil { t.Fatalf("get registers error: %v\n", err) }
+
+	tracee.SendSignal(syscall.SIGKILL)
 }
