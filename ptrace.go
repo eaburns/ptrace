@@ -209,6 +209,7 @@ func (t* Tracee) GetIPtr() (uintptr, error) {
 	value := make(chan uintptr, 1)
 	if t.do(func() {
 		var regs syscall.PtraceRegs
+		regs.Rip = 0
 		err := syscall.PtraceGetRegs(t.proc.Pid, &regs)
 		value <- uintptr(regs.Rip)
 		errchan <- err

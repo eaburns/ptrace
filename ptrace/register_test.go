@@ -56,6 +56,9 @@ func TestGrabRegs(t *testing.T) {
 
 	registers, err := tracee.GetRegs()
 	if err != nil { t.Fatalf("get registers error: %v\n", err) }
+	if registers.Rip == 0x0 {
+		t.Fatalf("instruction pointer is nonsense.\n")
+	}
 
 	tracee.SendSignal(syscall.SIGKILL)
 }
