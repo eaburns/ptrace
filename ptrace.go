@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	// TraceeExited is returned when a command is executed on a tracee
+	// ErrExited is returned when a command is executed on a tracee
 	// that has already exited.
-	TraceeExited = errors.New("tracee exited")
+	ErrExited = errors.New("tracee exited")
 )
 
 // An Event is sent on a Tracee's event channel whenever it changes state.
@@ -71,7 +71,7 @@ func (t *Tracee) Detach() error {
 	if t.do(func() { err <- syscall.PtraceDetach(t.proc.Pid) }) {
 		return <-err
 	}
-	return TraceeExited
+	return ErrExited
 }
 
 // SingleStep continues the tracee for one instruction.
@@ -80,7 +80,7 @@ func (t *Tracee) SingleStep() error {
 	if t.do(func() { err <- syscall.PtraceSingleStep(t.proc.Pid) }) {
 		return <-err
 	}
-	return TraceeExited
+	return ErrExited
 }
 
 // Continue makes the tracee execute unmanaged by the tracer.  Most
@@ -92,7 +92,7 @@ func (t *Tracee) Continue() error {
 	if t.do(func() { err <- syscall.PtraceCont(t.proc.Pid, signum) }) {
 		return <-err
 	}
-	return TraceeExited
+	return ErrExited
 }
 
 // SendSignal sends the given signal to the tracee.
@@ -101,7 +101,7 @@ func (t *Tracee) SendSignal(sig syscall.Signal) error {
 	if t.do(func() { err <- syscall.Kill(t.proc.Pid, sig) }) {
 		return <-err
 	}
-	return TraceeExited
+	return ErrExited
 }
 
 // Sends the command to the tracer go routine.  Returns whether the command
