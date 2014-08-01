@@ -95,8 +95,8 @@ func (t *Tracee) Continue() error {
 	return ErrExited
 }
 
-// SendSignal sends the given signal to the tracee.
-func (t *Tracee) SendSignal(sig syscall.Signal) error {
+// Kill sends the given signal to the tracee.
+func (t *Tracee) Kill(sig syscall.Signal) error {
 	err := make(chan error, 1)
 	if t.do(func() { err <- syscall.Kill(t.proc.Pid, sig) }) {
 		return <-err
